@@ -57,6 +57,16 @@ def _cut(a, b):
     return result
 
 
+def _intersect(a, b):
+    """Boolean intersection that returns a single shape or None."""
+    result = a & b
+    if isinstance(result, ShapeList):
+        if len(result) == 0:
+            return None
+        return Compound(list(result))
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Arc bar creation
 # ---------------------------------------------------------------------------
@@ -76,6 +86,81 @@ def _make_arc_bar(arc_w: float, arc_h: float, pivot_mm: float, config: MobileCon
     # Sweep cross-section along arc
     bar = sweep(cross_section, path=arc_edge)
     return bar
+
+
+def _trim_arc_tip_to_leaf(
+    piece,
+    leaf_solid,
+    *,
+    side: str,
+    tip_x: float,
+    tip_y: float,
+    span_mm: float,
+    arc_w: float,
+    arc_h: float,
+    pivot_mm: float,
+):
+    """Simple vertical trim from arc tip to the furthest overlap point."""
+    if side not in {"left", "right"}:
+        return piece
+
+    # Vertical cut means we search/cut along X only:
+    # left endpoint trims toward +X, right endpoint trims toward -X.
+    ux = 1.0 if side == "left" else -1.0
+
+    def _hits_at_t(t: float) -> bool:
+        # Probe a small station and test volumetric overlap.
+        x = tip_x + ux * t
+        probe = Pos(x, 0, 0) * Box(0.2, 1000.0, 1000.0)
+        station = _intersect(piece, probe)
+        if station is None:
+            return False
+        inter = _intersect(station, leaf_solid)
+        if inter is None:
+            return False
+        vol = getattr(inter, "volume", 0.0)
+        return bool(vol and vol > 1e-7)
+
+    steps = max(100, min(360, int(span_mm / 0.25)))
+    samples_t = [span_mm * (i / steps) for i in range(steps + 1)]
+    hits = [_hits_at_t(t) for t in samples_t]
+
+    deepest_idx = None
+    for i, hit in enumerate(hits):
+        if hit:
+            deepest_idx = i
+
+    if deepest_idx is None:
+        return piece
+
+    boundary_t = samples_t[deepest_idx]
+
+    # Refine the trailing boundary after deepest overlap.
+    if deepest_idx + 1 < len(samples_t) and not hits[deepest_idx + 1]:
+        lo = samples_t[deepest_idx]
+        hi = samples_t[deepest_idx + 1]
+        for _ in range(12):
+            mid = (lo + hi) / 2.0
+            if _hits_at_t(mid):
+                lo = mid
+            else:
+                hi = mid
+        boundary_t = lo
+
+    # Pull trim 2 mm back from overlap boundary so the arc intrudes into shape.
+    cut_t = max(0.0, min(span_mm, boundary_t - 2.0))
+    if cut_t <= 0:
+        return piece
+
+    width = cut_t + 1e-3
+    center_x = tip_x + ux * (cut_t / 2.0)
+    remover = Pos(center_x, 0, 0) * Box(width, 1000.0, 1000.0)
+    try:
+        return _cut(piece, remover)
+    except ValueError:
+        # Some very small branch fragments can become non-solid compounds
+        # after previous boolean ops; skip trim instead of failing export.
+        return piece
 
 
 # ---------------------------------------------------------------------------
@@ -297,7 +382,9 @@ def _generate_branch(
     left_y = arc_y_at_x(branch.arc.w, branch.arc.h, branch.pivot_mm, left_x)
     right_y = arc_y_at_x(branch.arc.w, branch.arc.h, branch.pivot_mm, right_x)
 
-    cutters: list[tuple[float, float, Part]] = []  # (ep_x, ep_y, cutter)
+    cutters: list[Part] = []
+    left_leaf_body = None
+    right_leaf_body = None
 
     # Counter-rotate leaves so they appear upright when the arc tilts.
     # branch.angle uses CW-positive convention; build123d Rot Z uses
@@ -305,34 +392,62 @@ def _generate_branch(
     # so we pre-apply the inverse: Rot(0,0,+angle).
     counter_rot = Rot(0, 0, branch.angle)
 
-    # 3. Fuse positive leaf bodies at endpoints
-    #    _make_leaf_parts returns bodies centred at origin (XY and Z),
-    #    so Pos(ep_x, ep_y, 0) places the leaf centre right at the
-    #    arc tip, coplanar with the bar (both have midplane at Z=0).
+    # 3. Build transformed leaf solids/cutters.
     if isinstance(branch.left, ResolvedLeaf):
         pos_solid, neg_list = _make_leaf_parts(branch.left, config)
         if pos_solid is not None:
-            piece = _fuse(piece, Pos(left_x, left_y, 0) * counter_rot * pos_solid)
+            left_leaf_body = Pos(left_x, left_y, 0) * counter_rot * pos_solid
         for c in neg_list:
-            cutters.append((left_x, left_y, counter_rot * c))
+            cutters.append(Pos(left_x, left_y, 0) * counter_rot * c)
 
     if isinstance(branch.right, ResolvedLeaf):
         pos_solid, neg_list = _make_leaf_parts(branch.right, config)
         if pos_solid is not None:
-            piece = _fuse(piece, Pos(right_x, right_y, 0) * counter_rot * pos_solid)
+            right_leaf_body = Pos(right_x, right_y, 0) * counter_rot * pos_solid
         for c in neg_list:
-            cutters.append((right_x, right_y, counter_rot * c))
+            cutters.append(Pos(right_x, right_y, 0) * counter_rot * c)
 
-    # 4. Apply ALL negative cutouts to the whole fused piece
-    #    Cutters are already counter-rotated, so just translate to endpoint.
-    for ep_x, ep_y, cutter in cutters:
-        piece = _cut(piece, Pos(ep_x, ep_y, 0) * cutter)
+    # 4. Trim arc tips to the final leaf-overlap boundary from each tip.
+    if left_leaf_body is not None:
+        piece = _trim_arc_tip_to_leaf(
+            piece,
+            left_leaf_body,
+            side="left",
+            tip_x=left_x,
+            tip_y=left_y,
+            span_mm=branch.arc.w,
+            arc_w=branch.arc.w,
+            arc_h=branch.arc.h,
+            pivot_mm=branch.pivot_mm,
+        )
+    if right_leaf_body is not None:
+        piece = _trim_arc_tip_to_leaf(
+            piece,
+            right_leaf_body,
+            side="right",
+            tip_x=right_x,
+            tip_y=right_y,
+            span_mm=branch.arc.w,
+            arc_w=branch.arc.w,
+            arc_h=branch.arc.h,
+            pivot_mm=branch.pivot_mm,
+        )
+
+    # 5. Fuse positive leaf bodies at endpoints.
+    if left_leaf_body is not None:
+        piece = _fuse(piece, left_leaf_body)
+    if right_leaf_body is not None:
+        piece = _fuse(piece, right_leaf_body)
+
+    # 6. Apply all negative cutouts to the whole fused piece.
+    for cutter in cutters:
+        piece = _cut(piece, cutter)
 
     if not skip_holes:
-        # 5. Cut pivot hole (always, vertical)
+        # 7. Cut pivot hole (always, vertical)
         piece = _cut_pivot_hole(piece, branch, config)
 
-        # 6. Continuation attachment style at arc endpoints.
+        # 8. Continuation attachment style at arc endpoints.
         if config.hook_style == "hook":
             hook = _make_endpoint_hook(config)
             if isinstance(branch.left, ResolvedBranch):

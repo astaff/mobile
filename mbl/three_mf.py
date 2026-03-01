@@ -20,13 +20,32 @@ def _fmt(v: float) -> str:
     return txt
 
 
-def _build_model_xml(part_meshes: list[tuple[str, list[Triangle], float]]) -> bytes:
+def _mesh_bounds_xy(triangles: list[Triangle]) -> tuple[float, float, float, float]:
+    min_x = float("inf")
+    max_x = float("-inf")
+    min_y = float("inf")
+    max_y = float("-inf")
+
+    for v0, v1, v2 in triangles:
+        for vx, vy, _vz in (v0, v1, v2):
+            min_x = min(min_x, vx)
+            max_x = max(max_x, vx)
+            min_y = min(min_y, vy)
+            max_y = max(max_y, vy)
+
+    if min_x == float("inf"):
+        return 0.0, 0.0, 0.0, 0.0
+
+    return min_x, max_x, min_y, max_y
+
+
+def _build_model_xml(part_meshes: list[tuple[str, list[Triangle], float, float]]) -> bytes:
     ET.register_namespace("", CORE_NS)
     model = ET.Element(f"{{{CORE_NS}}}model", {"unit": "millimeter", "xml:lang": "en-US"})
     resources = ET.SubElement(model, f"{{{CORE_NS}}}resources")
     build = ET.SubElement(model, f"{{{CORE_NS}}}build")
 
-    for object_id, (name, triangles, offset_x) in enumerate(part_meshes, start=1):
+    for object_id, (name, triangles, offset_x, offset_y) in enumerate(part_meshes, start=1):
         obj = ET.SubElement(
             resources,
             f"{{{CORE_NS}}}object",
@@ -42,7 +61,7 @@ def _build_model_xml(part_meshes: list[tuple[str, list[Triangle], float]]) -> by
         for v0, v1, v2 in triangles:
             tri = []
             for vx, vy, vz in (v0, v1, v2):
-                key = (vx + offset_x, vy, vz)
+                key = (vx + offset_x, vy + offset_y, vz)
                 idx = vertex_indices.get(key)
                 if idx is None:
                     idx = len(vertex_indices)
@@ -106,16 +125,65 @@ def _rels_xml() -> bytes:
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
-def export_3mf_files(inputs: list[Path], output: Path, spacing: float = 10.0) -> Path:
-    """Write a 3MF package containing one named object per STL input file."""
-    part_meshes: list[tuple[str, list[Triangle], float]] = []
-    cursor_x = 0.0
+def export_3mf_files(
+    inputs: list[Path],
+    output: Path,
+    spacing: float = 2.0,
+    build_plate_width: float = 200.0,
+    build_plate_depth: float = 200.0,
+    edge_margin: float = 1.0,
+) -> Path:
+    """Write a 3MF package containing one named object per STL input file.
+
+    Parts are arranged in a 2D grid that wraps rows to fit the configured
+    build plate footprint.
+    """
+    part_meshes: list[tuple[str, list[Triangle], float, float]] = []
+    usable_width = build_plate_width - 2.0 * edge_margin
+    usable_depth = build_plate_depth - 2.0 * edge_margin
+    if usable_width <= 0 or usable_depth <= 0:
+        raise ValueError(
+            f"Build plate {build_plate_width:.1f}x{build_plate_depth:.1f} mm is too "
+            f"small for edge margin {edge_margin:.1f} mm"
+        )
+
+    cursor_x = edge_margin
+    cursor_y = edge_margin
+    row_depth = 0.0
 
     for path in inputs:
-        triangles, bounds = read_binary_stl(path)
-        offset_x = cursor_x - bounds.min_x
-        part_meshes.append((path.stem, triangles, offset_x))
-        cursor_x += (bounds.max_x - bounds.min_x) + spacing
+        triangles, _bounds = read_binary_stl(path)
+        min_x, max_x, min_y, max_y = _mesh_bounds_xy(triangles)
+        width = max_x - min_x
+        depth = max_y - min_y
+
+        if width > usable_width or depth > usable_depth:
+            raise ValueError(
+                f"Part '{path.stem}' ({width:.2f}x{depth:.2f} mm) exceeds "
+                f"usable plate area {usable_width:.1f}x{usable_depth:.1f} mm "
+                f"(plate {build_plate_width:.1f}x{build_plate_depth:.1f}, "
+                f"edge margin {edge_margin:.1f})"
+            )
+
+        # Wrap to next row when this part no longer fits current row.
+        if cursor_x > edge_margin and (cursor_x + width) > (build_plate_width - edge_margin):
+            cursor_x = edge_margin
+            cursor_y += row_depth + spacing
+            row_depth = 0.0
+
+        if (cursor_y + depth) > (build_plate_depth - edge_margin):
+            raise ValueError(
+                f"Cannot fit all parts on build plate "
+                f"{build_plate_width:.1f}x{build_plate_depth:.1f} mm "
+                f"with spacing {spacing:.1f} and edge margin {edge_margin:.1f} mm"
+            )
+
+        offset_x = cursor_x - min_x
+        offset_y = cursor_y - min_y
+        part_meshes.append((path.stem, triangles, offset_x, offset_y))
+
+        cursor_x += width + spacing
+        row_depth = max(row_depth, depth)
 
     output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(output, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:

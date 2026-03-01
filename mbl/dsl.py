@@ -14,6 +14,8 @@ import shutil
 import tempfile
 from typing import Sequence, Union
 
+from build123d import Face, import_svg
+
 from mbl.config import MobileConfig
 from mbl.errors import MobileEmptyError, MobileShapeError
 from mbl.stl import merge_stl_files
@@ -110,6 +112,16 @@ class Leaf:
         p = path or str(_asset_path("burst.svg"))
         return Leaf.from_svg(p)
 
+    @staticmethod
+    def heart(path: str | None = None) -> Leaf:
+        p = path or str(_asset_path("heart.svg"))
+        return Leaf.from_svg(p)
+
+    @staticmethod
+    def shopify(path: str | None = None) -> Leaf:
+        p = path or str(_asset_path("shopify.svg"))
+        return Leaf.from_svg(p)
+
 
 Child = Union[Leaf, Svg, Txt, Space, None]
 
@@ -178,6 +190,16 @@ def _asset_path(name: str) -> Path:
     return Path(__file__).parent / "assets" / name
 
 
+DEFAULT_SHAPE_DIAMETER_MM = 25.0
+BUILTIN_SHAPES = {
+    "circle": "circle.svg",
+    "burst": "burst.svg",
+    "star": "star.svg",
+    "heart": "heart.svg",
+    "shopify": "shopify.svg",
+}
+
+
 def _to_leaf(obj: Atom | Space | Leaf | None) -> Leaf | None:
     if obj is None:
         return None
@@ -206,25 +228,65 @@ def stencil_cut(
     )
 
 
-def _leaf_from_shape(shape: str) -> Leaf:
-    if shape == "circle":
-        return Leaf.circle()
-    if shape == "burst":
-        return Leaf.burst()
-    if shape == "star":
-        return Leaf.star()
-    raise ValueError(f"Unsupported leaf shape: {shape}")
+def text_leaf(text: str, *, text_scale: float = 1.0) -> Leaf:
+    return Leaf(Space((Txt(text, scale=text_scale),)))
 
 
-def _leaf_scale_for_shape(shape: str) -> float:
-    # Normalize apparent size across base SVG shapes by matching circle area.
-    if shape == "circle":
-        return 1.0
-    if shape == "burst":
-        return 1.4
-    if shape == "star":
-        return 1.5
-    raise ValueError(f"Unsupported leaf shape: {shape}")
+def _shape_path(shape: str) -> Path | None:
+    normalized = shape.strip()
+    if not normalized:
+        raise ValueError("shape cannot be empty")
+
+    key = normalized.lower()
+    if key == "blank":
+        return None
+
+    if key in BUILTIN_SHAPES:
+        return _asset_path(BUILTIN_SHAPES[key])
+
+    path = Path(normalized).expanduser()
+    if path.suffix.lower() != ".svg":
+        raise ValueError(
+            "shape must be a preset "
+            "(circle|burst|star|heart|shopify|blank) or an .svg path"
+        )
+    if not path.is_absolute():
+        path = (Path.cwd() / path).resolve()
+    if not path.exists():
+        raise ValueError(f"Custom shape file not found: {path}")
+    return path
+
+
+def _svg_diameter(path: Path) -> float:
+    shapes = import_svg(str(path))
+    faces = [s for s in shapes if isinstance(s, Face)]
+    if not faces:
+        raise ValueError(f"Shape '{path}' has no SVG faces")
+
+    min_x = min(face.bounding_box().min.X for face in faces)
+    max_x = max(face.bounding_box().max.X for face in faces)
+    min_y = min(face.bounding_box().min.Y for face in faces)
+    max_y = max(face.bounding_box().max.Y for face in faces)
+
+    diameter = max(max_x - min_x, max_y - min_y)
+    if diameter <= 0:
+        raise ValueError(f"Shape '{path}' has invalid diameter ({diameter})")
+    return diameter
+
+
+def _shape_leaf(
+    shape: str,
+    *,
+    shape_scale: float,
+    default_diameter_mm: float = DEFAULT_SHAPE_DIAMETER_MM,
+) -> Leaf | None:
+    path = _shape_path(shape)
+    if path is None:
+        return None
+
+    diameter = _svg_diameter(path)
+    normalization = default_diameter_mm / diameter
+    return Leaf.from_svg(str(path)) * (normalization * shape_scale)
 
 
 RowLike = Cell | Sequence[Cell]
@@ -250,9 +312,9 @@ class Mobile:
         *,
         width: float = 80.0,
         height: float = 12.0,
-        leaf_shape: str = "circle",
+        shape: str = "circle",
         shape_scale: float = 1.0,
-        text_scale: float = 1.0,
+        text_scale: float = 0.8,
         config: MobileConfig | None = None,
     ) -> Mobile:
         if not word:
@@ -269,27 +331,37 @@ class Mobile:
                 cfg.font_path = str(bundled_font)
         count = len(word)
         rows: list[Cell] = []
-        base_leaf = _leaf_from_shape(leaf_shape)
-        shape_norm = _leaf_scale_for_shape(leaf_shape)
+        base_leaf = _shape_leaf(shape, shape_scale=shape_scale)
+        is_blank = base_leaf is None
 
         for idx, ch in enumerate(word):
             ratio = idx / max(1, count - 1)
             arc_w = max(28.0, width * (0.68 + (1.0 - ratio) * 0.32))
             arc_h = max(4.0, height * (0.6 + (1.0 - ratio) * 0.4))
-            leaf_scale = (
-                max(0.62, 1.0 - 0.32 * ratio) * shape_norm * shape_scale
-            )
-            if ch.isspace():
-                left_leaf = base_leaf * leaf_scale
-            else:
-                left_leaf = (
-                    stencil_cut(ch, base=base_leaf, text_scale=text_scale) * leaf_scale
+            leaf_scale = max(0.62, 1.0 - 0.32 * ratio)
+
+            if is_blank:
+                left_leaf = text_leaf(ch, text_scale=text_scale) * leaf_scale
+                right_leaf = (
+                    text_leaf("", text_scale=text_scale) * max(0.55, leaf_scale * 0.8)
+                    if idx == count - 1
+                    else None
                 )
-            right_leaf = (
-                base_leaf * max(0.55, leaf_scale * 0.8)
-                if idx == count - 1
-                else None
-            )
+            else:
+                assert base_leaf is not None
+                if ch.isspace():
+                    left_leaf = base_leaf * leaf_scale
+                else:
+                    left_leaf = (
+                        stencil_cut(ch, base=base_leaf, text_scale=text_scale)
+                        * leaf_scale
+                    )
+                right_leaf = (
+                    base_leaf * max(0.55, leaf_scale * 0.8)
+                    if idx == count - 1
+                    else None
+                )
+
             rows.append(Arc(arc_w, arc_h) @ (left_leaf, right_leaf))
 
         return cls(rows, config=cfg)

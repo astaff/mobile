@@ -36,10 +36,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--hook-style", choices=["line", "hook"], default="line")
     parser.add_argument(
-        "--leaf-shape",
-        choices=["circle", "burst", "star"],
+        "--shape",
         default="circle",
-        help="Base leaf shape for letters/spaces",
+        help="Leaf background: circle|burst|star|heart|shopify|blank or a custom .svg path",
     )
     parser.add_argument("--font-size", type=float, default=22.0, help="Stencil text size in mm")
     parser.add_argument("--width", type=float, default=80.0, help="Top arc width (mm)")
@@ -53,7 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--text-scale",
         type=float,
-        default=1.0,
+        default=0.8,
         help="Multiplier for glyph cutout size relative to leaf",
     )
     return parser
@@ -73,7 +72,7 @@ def main(argv: list[str] | None = None) -> int:
         args.word,
         width=args.width,
         height=args.height,
-        leaf_shape=args.leaf_shape,
+        shape=args.shape,
         shape_scale=args.shape_scale,
         text_scale=args.text_scale,
         config=config,

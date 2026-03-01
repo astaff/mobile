@@ -1,42 +1,55 @@
 # mbl
 
-Generate parametric hanging mobiles with a small Python DSL and export printable `.3mf` / `.stl`.
+Generate printable hanging mobiles from words.
 
-## CLI
+## CLI (golden path)
 
 ```bash
-git clone <repo-url>
-cd <repo-dir>
 uv sync
 uv run mbl "HELLO" --output hello.3mf
-uv run mbl "XYZ" --leaf-shape burst --output xyz.3mf
-uv run mbl "XYZ" --leaf-shape burst --shape-scale 1.3 --text-scale 0.9 --output xyz-scaled.3mf
+```
+
+Shape modes:
+
+```bash
+# Built-in shape, normalized to 25 mm diameter at shape-scale 1.0
+uv run mbl "HELLO" --shape burst --output hello-burst.3mf
+uv run mbl "HELLO" --shape shopify --output hello-shopify.3mf
+
+# Custom SVG, normalized to 25 mm diameter at shape-scale 1.0
+uv run mbl "HELLO" --shape custom-shape.svg --output hello-custom.3mf
+
+# Blank mode: no background shape, letters are positive geometry
+uv run mbl "HELLO" --shape blank --output hello-blank.3mf
+
+# Independent scaling
+uv run mbl "HELLO" --shape custom-shape.svg --shape-scale 1.5 --text-scale 0.8 --output hello-scaled.3mf
 ```
 
 Key flags:
-- `--output`: output file (`.3mf` default, `.stl` supported)
-- `--font`: stencil font file (`.ttf` / `.otf`)
-- `--font-size`: letter size in mm
-- `--leaf-shape`: `circle`, `burst`, `star`
-- `--shape-scale`: extra multiplier for leaf body size
-- `--text-scale`: multiplier for glyph cutout size (independent from leaf body scale)
-- `--hook-style`: `line` or `hook`
-- `--width`, `--height`: top arc dimensions
+- `--shape`: `circle` (default), `burst`, `star`, `heart`, `shopify`, `blank`, or path to `.svg`
+- `--shape-scale`: background shape multiplier (default `1.0`)
+- `--text-scale`: text multiplier (default `0.8`)
+- `--font-size`: base font size in mm
+- `--output`: `.3mf` (default) or `.stl`
 
-## Python SDK DSL
+## SDK (golden path)
 
-```bash
-uv run python - <<'PY'
+```python
 from mbl import Mobile
 
-Mobile.from_word("HELLO", leaf_shape="circle").to_file("hello.3mf")
-Mobile.from_word("XYZ", leaf_shape="burst").to_file("xyz.3mf")
-Mobile.from_word("XYZ", leaf_shape="burst", shape_scale=1.3, text_scale=0.9).to_file("xyz-scaled.3mf")
-PY
+Mobile.from_word("HELLO").to_file("hello.3mf")
+Mobile.from_word("HELLO", shape="burst").to_file("hello-burst.3mf")
+Mobile.from_word("HELLO", shape="shopify").to_file("hello-shopify.3mf")
+Mobile.from_word("HELLO", shape="custom-shape.svg", shape_scale=1.5, text_scale=0.8).to_file("hello-scaled.3mf")
+Mobile.from_word("HELLO", shape="blank").to_file("hello-blank.3mf")
 ```
 
-## DSL shape
+## Shape semantics
 
-- Single bind: `Arc(w, h) @ (left, right)`
-- Right-hole shorthand: `Arc(w, h) @ (left,)`
-- Row map bind: `Arc(w, h) @ [(a, b), (c,)]`
+- Default shape is `circle`.
+- `shape_scale=1.0` means shape diameter is normalized to `25 mm`.
+- Built-ins (`circle`, `burst`, `star`, `heart`, `shopify`) are normalized the same way.
+- Custom SVGs are loaded and normalized to `25 mm` diameter before `shape_scale` is applied.
+- Text subtraction/geometry uses `text_scale` independently of `shape_scale`.
+- Simulation runs after shape/text scaling, so balancing uses final scaled geometry.
