@@ -124,7 +124,7 @@ def _make_leaf_parts(
         elif isinstance(atom, Txt):
             text_compound = Compound.make_text(
                 txt=atom.text,
-                font_size=config.font_size,
+                font_size=config.font_size * atom.scale,
                 font=config.font,
                 font_path=config.font_path,
                 font_style=FontStyle.REGULAR,
@@ -135,10 +135,11 @@ def _make_leaf_parts(
             # Compute the visual BB centre and pre-shift each cutter so
             # it is truly at (0, 0) before the later SVG-centre step.
             tbb = text_compound.bounding_box()
-            txt_cx = (tbb.min.X + tbb.max.X) / 2.0 * xy_scale
-            txt_cy = (tbb.min.Y + tbb.max.Y) / 2.0 * xy_scale
+            glyph_scale = xy_scale
+            txt_cx = (tbb.min.X + tbb.max.X) / 2.0 * glyph_scale
+            txt_cy = (tbb.min.Y + tbb.max.Y) / 2.0 * glyph_scale
             for face in text_compound.faces():
-                face_scaled = face.scale(xy_scale) if xy_scale != 1.0 else face
+                face_scaled = face.scale(glyph_scale) if glyph_scale != 1.0 else face
                 cutter = extrude(face_scaled, amount=thickness * 1.5)
                 cutter = Pos(-txt_cx, -txt_cy, 0) * cutter
                 neg_cutters.append(cutter)

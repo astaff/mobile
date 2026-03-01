@@ -44,6 +44,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--font-size", type=float, default=22.0, help="Stencil text size in mm")
     parser.add_argument("--width", type=float, default=80.0, help="Top arc width (mm)")
     parser.add_argument("--height", type=float, default=12.0, help="Top arc sagitta (mm)")
+    parser.add_argument(
+        "--shape-scale",
+        type=float,
+        default=1.0,
+        help="Extra multiplier for leaf body size",
+    )
+    parser.add_argument(
+        "--text-scale",
+        type=float,
+        default=1.0,
+        help="Multiplier for glyph cutout size relative to leaf",
+    )
     return parser
 
 
@@ -62,6 +74,8 @@ def main(argv: list[str] | None = None) -> int:
         width=args.width,
         height=args.height,
         leaf_shape=args.leaf_shape,
+        shape_scale=args.shape_scale,
+        text_scale=args.text_scale,
         config=config,
     )
 

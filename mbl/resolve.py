@@ -114,7 +114,7 @@ def _compute_leaf_area(leaf: Leaf, config: MobileConfig) -> float:
         elif isinstance(atom, Txt):
             text_compound = Compound.make_text(
                 txt=atom.text,
-                font_size=config.font_size,
+                font_size=config.font_size * atom.scale,
                 font=config.font,
                 font_path=config.font_path,
                 font_style=FontStyle.REGULAR,

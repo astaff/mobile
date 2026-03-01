@@ -32,5 +32,5 @@ class MobileConfig:
     # Pivot solver (COM-based binary search)
     sim_angle_tolerance_deg: float = 0.1
     sim_max_bisect_iterations: int = 20
-    sim_stl_tolerance: float = 0.05  # low-res for intermediate STLs
-    sim_stl_angular_tolerance: float = 0.5  # radians, low-res
+    sim_stl_tolerance: float = 1e-4  # match final STL tessellation
+    sim_stl_angular_tolerance: float = 0.01  # radians, match final tessellation

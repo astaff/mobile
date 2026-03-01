@@ -47,9 +47,10 @@ class Svg:
 class Txt:
     text: str
     neg: bool = False
+    scale: float = 1.0
 
     def __invert__(self) -> Txt:
-        return Txt(self.text, not self.neg)
+        return Txt(self.text, not self.neg, self.scale)
 
     def __and__(self, other: Atom) -> Space:
         return Space((self, other))
@@ -189,11 +190,20 @@ def _to_leaf(obj: Atom | Space | Leaf | None) -> Leaf | None:
     raise TypeError(f"Cannot convert {type(obj).__name__} to Leaf")
 
 
-def stencil_cut(text: str, base: Leaf | Space | Svg | None = None) -> Leaf:
+def stencil_cut(
+    text: str,
+    base: Leaf | Space | Svg | None = None,
+    *,
+    text_scale: float = 1.0,
+) -> Leaf:
     base_shape = base if base is not None else Leaf.circle()
     base_leaf = _to_leaf(base_shape)
     assert base_leaf is not None
-    return Leaf(base_leaf.space & ~Txt(text), base_leaf.scale, base_leaf.rotation)
+    return Leaf(
+        base_leaf.space & ~Txt(text, scale=text_scale),
+        base_leaf.scale,
+        base_leaf.rotation,
+    )
 
 
 def _leaf_from_shape(shape: str) -> Leaf:
@@ -203,6 +213,17 @@ def _leaf_from_shape(shape: str) -> Leaf:
         return Leaf.burst()
     if shape == "star":
         return Leaf.star()
+    raise ValueError(f"Unsupported leaf shape: {shape}")
+
+
+def _leaf_scale_for_shape(shape: str) -> float:
+    # Normalize apparent size across base SVG shapes by matching circle area.
+    if shape == "circle":
+        return 1.0
+    if shape == "burst":
+        return 1.4
+    if shape == "star":
+        return 1.5
     raise ValueError(f"Unsupported leaf shape: {shape}")
 
 
@@ -230,10 +251,16 @@ class Mobile:
         width: float = 80.0,
         height: float = 12.0,
         leaf_shape: str = "circle",
+        shape_scale: float = 1.0,
+        text_scale: float = 1.0,
         config: MobileConfig | None = None,
     ) -> Mobile:
         if not word:
             raise MobileEmptyError("word is empty")
+        if shape_scale <= 0:
+            raise ValueError("shape_scale must be > 0")
+        if text_scale <= 0:
+            raise ValueError("text_scale must be > 0")
 
         cfg = config or MobileConfig()
         if cfg.font_path is None:
@@ -242,17 +269,22 @@ class Mobile:
                 cfg.font_path = str(bundled_font)
         count = len(word)
         rows: list[Cell] = []
+        base_leaf = _leaf_from_shape(leaf_shape)
+        shape_norm = _leaf_scale_for_shape(leaf_shape)
 
         for idx, ch in enumerate(word):
             ratio = idx / max(1, count - 1)
             arc_w = max(28.0, width * (0.68 + (1.0 - ratio) * 0.32))
             arc_h = max(4.0, height * (0.6 + (1.0 - ratio) * 0.4))
-            leaf_scale = max(0.62, 1.0 - 0.32 * ratio)
-            base_leaf = _leaf_from_shape(leaf_shape)
+            leaf_scale = (
+                max(0.62, 1.0 - 0.32 * ratio) * shape_norm * shape_scale
+            )
             if ch.isspace():
                 left_leaf = base_leaf * leaf_scale
             else:
-                left_leaf = stencil_cut(ch, base=base_leaf) * leaf_scale
+                left_leaf = (
+                    stencil_cut(ch, base=base_leaf, text_scale=text_scale) * leaf_scale
+                )
             right_leaf = (
                 base_leaf * max(0.55, leaf_scale * 0.8)
                 if idx == count - 1
