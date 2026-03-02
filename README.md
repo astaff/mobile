@@ -1,8 +1,6 @@
 # mbl
 
-Generate printable hanging mobiles from words.
-
-## CLI (golden path)
+Generate printable hanging mobiles with letters and shapes.
 
 ```bash
 uv sync
