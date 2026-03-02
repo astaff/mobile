@@ -39,9 +39,8 @@ from mbl import Mobile
 
 Mobile.from_word("HELLO").to_file("hello.3mf")
 Mobile.from_word("HELLO", shape="burst").to_file("hello-burst.3mf")
-Mobile.from_word("HELLO", shape="shopify").to_file("hello-shopify.3mf")
 Mobile.from_word("HELLO", shape="custom-shape.svg", shape_scale=1.5, text_scale=0.8).to_file("hello-scaled.3mf")
-Mobile.from_word("HELLO", shape="blank").to_file("hello-blank.3mf")
+Mobile.from_word("HELLO", shape="blank").to_file("hello-blank.3mf")  # Print letters as solids in Helvetica
 ```
 
 ## SDK (custom DSL, mixed shapes)
