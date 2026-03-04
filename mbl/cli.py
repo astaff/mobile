@@ -33,7 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--shape",
         default="circle",
-        help="Leaf background: circle|burst|star|heart|shopify|blank or a custom .svg path",
+        help="Leaf background: circle|burst|star|heart|shopify|peace|blank or a custom .svg path",
     )
     parser.add_argument("--font-size", type=float, default=22.0, help="Stencil text size in mm")
     parser.add_argument("--width", type=float, default=80.0, help="Top arc width (mm)")

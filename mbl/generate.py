@@ -126,8 +126,9 @@ def _trim_arc_tip_to_leaf(
     if boundary_t <= 0:
         return piece
 
-    # Pull trim 2 mm back from overlap boundary so the arc intrudes into shape.
-    cut_t = max(0.0, min(span_mm, boundary_t - 2.0))
+    # Pull trim slightly back from overlap boundary so the arc intrudes into shape.
+    # Tuned to be a bit shorter than before while keeping contact.
+    cut_t = max(0.0, min(span_mm, boundary_t - 1.8))
     if cut_t <= 0:
         return piece
 

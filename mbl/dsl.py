@@ -123,6 +123,11 @@ class Leaf:
         p = path or str(_asset_path("shopify.svg"))
         return Leaf.from_svg(p)
 
+    @staticmethod
+    def peace(path: str | None = None) -> Leaf:
+        p = path or str(_asset_path("peace.svg"))
+        return Leaf.from_svg(p)
+
 
 Child = Union[Leaf, Svg, Txt, Space, None]
 
@@ -198,6 +203,7 @@ BUILTIN_SHAPES = {
     "star": "star.svg",
     "heart": "heart.svg",
     "shopify": "shopify.svg",
+    "peace": "peace.svg",
 }
 
 
@@ -265,7 +271,7 @@ def _shape_path(shape: str) -> Path | None:
     if path.suffix.lower() != ".svg":
         raise ValueError(
             "shape must be a preset "
-            "(circle|burst|star|heart|shopify|blank) or an .svg path"
+            "(circle|burst|star|heart|shopify|peace|blank) or an .svg path"
         )
     if not path.is_absolute():
         path = (Path.cwd() / path).resolve()
