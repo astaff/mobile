@@ -29,9 +29,10 @@ uv run mbl "HELLO" --shape custom-shape.svg --profile
 ```
 
 Key flags:
-- `--shape`: `circle` (default), `burst`, `star`, `heart`, `shopify`, `blank`, or path to `.svg`
+- `--shape`: `circle` (default), `burst`, `star`, `heart`, `shopify`, `peace`, `cup`, `eclipse`, `octopus`, `smile`, `sun`, `blank`, or path to `.svg`
 - `--shape-scale`: background shape multiplier (default `1.0`)
 - `--text-scale`: text multiplier (default `0.8`)
+- `--leaf-mass-scale`: solver calibration for leaf mass (`1.0` same, `<1` lighter, `>1` heavier)
 - `--font-size`: base font size in mm
 - `--output`: `.3mf` (default) or `.stl`
 
@@ -87,7 +88,19 @@ mobile.to_file("sun-two-row.3mf")
 
 - Default shape is `circle`.
 - `shape_scale=1.0` means shape diameter is normalized to `25 mm`.
-- Built-ins (`circle`, `burst`, `star`, `heart`, `shopify`) are normalized the same way.
+- Built-ins (`circle`, `burst`, `star`, `heart`, `shopify`, `peace`, `cup`, `eclipse`, `octopus`, `smile`, `sun`) are normalized the same way.
 - Custom SVGs are loaded and normalized to `25 mm` diameter before `shape_scale` is applied.
 - Text subtraction/geometry uses `text_scale` independently of `shape_scale`.
 - Simulation runs after shape/text scaling, so balancing uses final scaled geometry.
+
+## Creative Commons attribution
+
+The following built-in shapes are sourced from [Noun Project](https://thenounproject.com/) under Creative Commons:
+
+| Shape | Author | Noun Project ID |
+|-------|--------|-----------------|
+| cup | Adrien Coquet | 7683336 |
+| eclipse | Amazona Adorada | 7666379 |
+| octopus | Moreno | 8216521 |
+| smile | Dwi ridwanto | 7786982 |
+| sun | Creative Stall | 130085 |

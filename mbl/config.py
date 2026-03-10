@@ -34,3 +34,6 @@ class MobileConfig:
     sim_max_bisect_iterations: int = 20
     sim_stl_tolerance: float = 0.05  # coarser mesh for fast COM estimation
     sim_stl_angular_tolerance: float = 0.15  # radians, coarser COM mesh angle
+    # Leaf mass calibration for the pivot solver.
+    # 1.0 = unchanged, <1 lighter leaves, >1 heavier leaves.
+    sim_leaf_mass_scale: float = 1.0

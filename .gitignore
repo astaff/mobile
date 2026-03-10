@@ -36,9 +36,10 @@ output/
 *.swo
 *~
 
-# STL / 3MF (generated artifacts)
+# STL / 3MF / G-code (generated artifacts)
 *.stl
 *.3mf
+*.gcode
 
 # Type checker / linter cache
 .mypy_cache/

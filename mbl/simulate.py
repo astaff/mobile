@@ -190,7 +190,18 @@ def _solve_pivot(
 
     # 1. Compute COM from STL mesh
     com_x, com_y, _com_z, volume = compute_com(str(stl_path))
-    stl_mass = volume * config.density
+    stl_mass_raw = volume * config.density
+    direct_leaf_mass = 0.0
+    if isinstance(branch.left, ResolvedLeaf):
+        direct_leaf_mass += branch.left.weight
+    if isinstance(branch.right, ResolvedLeaf):
+        direct_leaf_mass += branch.right.weight
+
+    # Calibrate leaf mass proportionally while preserving the non-leaf mass
+    # captured by the branch STL (arc bar + overlap geometry).
+    leaf_mass_in_stl = min(direct_leaf_mass, stl_mass_raw)
+    non_leaf_mass = stl_mass_raw - leaf_mass_in_stl
+    stl_mass = non_leaf_mass + leaf_mass_in_stl * config.sim_leaf_mass_scale
 
     # 2. Child point masses at endpoints (only for sub-arc children).
     #    Direct leaves are already fused into the STL.

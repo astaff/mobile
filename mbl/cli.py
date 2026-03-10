@@ -35,7 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--shape",
         default="circle",
-        help="Leaf background: circle|burst|star|heart|shopify|peace|blank or a custom .svg path",
+        help="Leaf background: circle|burst|star|heart|shopify|peace|cup|eclipse|octopus|smile|sun|blank or a custom .svg path",
     )
     parser.add_argument("--font-size", type=float, default=22.0, help="Stencil text size in mm")
     parser.add_argument("--width", type=float, default=80.0, help="Top arc width (mm)")
@@ -57,6 +57,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print timing/counter profile for generation stages",
     )
+    parser.add_argument(
+        "--leaf-mass-scale",
+        "--endpoint-payload-g",
+        dest="leaf_mass_scale",
+        type=float,
+        default=1.0,
+        help="Leaf mass scale in solver (1.0 unchanged, 0.9 lighter, 1.1 heavier)",
+    )
     return parser
 
 
@@ -64,11 +72,14 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.profile:
         set_enabled(True)
+    if args.leaf_mass_scale <= 0:
+        raise SystemExit("--leaf-mass-scale must be > 0")
 
     config = MobileConfig(
         font_path=args.font_path,
         font_size=args.font_size,
         hook_style=args.hook_style,
+        sim_leaf_mass_scale=args.leaf_mass_scale,
     )
 
     mobile = Mobile.from_word(

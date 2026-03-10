@@ -129,6 +129,31 @@ class Leaf:
         p = path or str(_asset_path("peace.svg"))
         return Leaf.from_svg(p)
 
+    @staticmethod
+    def cup(path: str | None = None) -> Leaf:
+        p = path or str(_asset_path("cup.svg"))
+        return Leaf.from_svg(p)
+
+    @staticmethod
+    def eclipse(path: str | None = None) -> Leaf:
+        p = path or str(_asset_path("eclipse.svg"))
+        return Leaf.from_svg(p)
+
+    @staticmethod
+    def octopus(path: str | None = None) -> Leaf:
+        p = path or str(_asset_path("octopus.svg"))
+        return Leaf.from_svg(p)
+
+    @staticmethod
+    def smile(path: str | None = None) -> Leaf:
+        p = path or str(_asset_path("smile.svg"))
+        return Leaf.from_svg(p)
+
+    @staticmethod
+    def sun(path: str | None = None) -> Leaf:
+        p = path or str(_asset_path("sun.svg"))
+        return Leaf.from_svg(p)
+
 
 Child = Union[Leaf, Svg, Txt, Space, None]
 
@@ -205,6 +230,11 @@ BUILTIN_SHAPES = {
     "heart": "heart.svg",
     "shopify": "shopify.svg",
     "peace": "peace.svg",
+    "cup": "cup.svg",
+    "eclipse": "eclipse.svg",
+    "octopus": "octopus.svg",
+    "smile": "smile.svg",
+    "sun": "sun.svg",
 }
 
 
