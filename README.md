@@ -51,43 +51,18 @@ Key flags:
 - `--font-size`: base font size in mm
 - `--output`: `.3mf` (default) or `.stl`
 
-## SDK (golden path)
-
-```python
-from mbl import Mobile
-
-Mobile.from_word("HELLO").to_file("hello.3mf")
-Mobile.from_word("HELLO", shape="burst").to_file("hello-burst.3mf")
-Mobile.from_word("MOM", shape="heart").to_file("mom.3mf")
-Mobile.from_word("❤️❤️❤️❤️❤️❤️❤️").to_file("mom-7-hearts.3mf")
-Mobile.from_word("⭐❤️😊🐙☀️").to_file("emoji-mix.3mf")
-Mobile.from_word("HELLO", shape="custom-shape.svg", shape_scale=1.5, text_scale=0.8).to_file("hello-scaled.3mf")
-Mobile.from_word("HELLO", shape="blank").to_file("hello-blank.3mf")  # Print letters as solids in Helvetica
-```
-
-## SDK (custom DSL, mixed shapes)
-
-```python
-from mbl import Arc, Mobile, Text, Circle, Burst
-
-mobile = Mobile(
-    [
-        Arc(88, 12)
-        @ (
-            ~Text("S") & Circle(),
-            ~Text("U") & Burst(),
-        ),
-    ]
-)
-
-mobile.to_file("sun-mixed-shapes.3mf")
-```
-
-Two-row variant:
+## SDK
 
 ```python
 from mbl import Arc, Mobile, Text, Circle, Burst, Heart
 
+# One-liner
+Mobile.from_word("HELLO").to_file("hello.3mf")
+Mobile.from_word("MOM", shape="heart").to_file("mom.3mf")
+Mobile.from_word("❤️❤️❤️❤️❤️❤️❤️").to_file("mom-7-hearts.3mf")
+Mobile.from_word("⭐❤️😊🐙☀️").to_file("emoji-mix.3mf")
+
+# Custom DSL — mixed shapes, two rows
 mobile = Mobile(
     [
         Arc(88, 12) @ (~Text("S") & Circle(), None),
@@ -100,15 +75,6 @@ mobile = Mobile(
 )
 
 mobile.to_file("sun-two-row.3mf")
-```
-
-The `stencil_cut()` helper is still available as an alternative:
-
-```python
-from mbl import Arc, Leaf, Mobile, stencil_cut
-
-mobile = Mobile([Arc(88, 12) @ (stencil_cut("S", base=Leaf.circle()), stencil_cut("U", base=Leaf.burst()))])
-mobile.to_file("sun-mixed-shapes.3mf")
 ```
 
 ## Shape semantics
