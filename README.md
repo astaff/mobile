@@ -5,6 +5,12 @@
 Generate printable hanging mobiles with letters and shapes.
 
 ```bash
+uvx --from git+https://github.com/astaff/mobile.git mbl "HELLO"
+```
+
+Or from a local checkout:
+
+```bash
 uv sync
 uv run mbl "HELLO"
 ```
