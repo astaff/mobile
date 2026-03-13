@@ -96,51 +96,42 @@ def _make_arc_bar(arc_w: float, arc_h: float, pivot_mm: float, config: MobileCon
     return bar
 
 
-def _trim_arc_tip_to_leaf(
-    piece,
-    leaf_solid,
-    *,
-    side: str,
-    tip_x: float,
-    tip_y: float,
-    span_mm: float,
-    arc_w: float,
-    arc_h: float,
-    pivot_mm: float,
-):
-    """Simple vertical trim from arc tip to the furthest overlap point."""
-    if side not in {"left", "right"}:
+def _subtract_leaf_voids(piece, leaf_solid):
+    """Remove arc material that protrudes into empty voids of the leaf shape.
+
+    Instead of pre-trimming the arc with a cylinder (which cuts too
+    aggressively on complex shapes), this fuses arc + leaf first and then
+    subtracts the voids — regions inside the leaf's bounding box that are
+    not part of the leaf itself.
+    """
+    # Build a bounding-box solid around the leaf
+    lbb = leaf_solid.bounding_box()
+    bb_w = lbb.max.X - lbb.min.X
+    bb_h = lbb.max.Y - lbb.min.Y
+    if bb_w <= 0 or bb_h <= 0:
+        return piece
+    leaf_cx = (lbb.min.X + lbb.max.X) / 2.0
+    leaf_cy = (lbb.min.Y + lbb.max.Y) / 2.0
+    bb_z = lbb.max.Z - lbb.min.Z
+    leaf_cz = (lbb.min.Z + lbb.max.Z) / 2.0
+    if bb_z <= 0:
         return piece
 
-    # Fast path: intersect once and use overlap bounds along X.
-    overlap = _intersect(piece, leaf_solid)
-    if overlap is None:
-        return piece
+    bb_solid = Pos(leaf_cx, leaf_cy, leaf_cz) * Box(bb_w, bb_h, bb_z)
 
-    bb = overlap.bounding_box()
-    if side == "left":
-        boundary_t = bb.max.X - tip_x
-        ux = 1.0
-    else:
-        boundary_t = tip_x - bb.min.X
-        ux = -1.0
-    if boundary_t <= 0:
-        return piece
-
-    # Pull trim slightly back from overlap boundary so the arc intrudes into shape.
-    # Tuned to be a bit shorter than before while keeping contact.
-    cut_t = max(0.0, min(span_mm, boundary_t - 1.8))
-    if cut_t <= 0:
-        return piece
-
-    width = cut_t + 1e-3
-    center_x = tip_x + ux * (cut_t / 2.0)
-    remover = Pos(center_x, 0, 0) * Box(width, 1000.0, 1000.0)
+    # Voids = bounding box minus the leaf shape
     try:
-        return _cut(piece, remover)
+        voids = _cut(bb_solid, leaf_solid)
     except ValueError:
-        # Some very small branch fragments can become non-solid compounds
-        # after previous boolean ops; skip trim instead of failing export.
+        return piece
+
+    if voids is None:
+        return piece
+
+    # Subtract voids from the fused piece
+    try:
+        return _cut(piece, voids)
+    except ValueError:
         return piece
 
 
@@ -150,8 +141,8 @@ def _trim_arc_tip_to_leaf(
 
 def _make_leaf_parts(
     leaf: ResolvedLeaf, config: MobileConfig
-) -> tuple[Part | None, list[Part]]:
-    """Build a leaf's positive solid body and list of negative cutters.
+) -> tuple[Part | None, list[Part], Part | None]:
+    """Build a leaf's positive solid body, negative cutters, and filled body.
 
     Both the positive body and cutters are centered at the origin:
       - XY center of the positive body's bounding box → (0, 0)
@@ -161,12 +152,15 @@ def _make_leaf_parts(
     just ``Pos(ep_x, ep_y, 0) * body`` and it will be coplanar with
     the arc bar (whose midplane is also Z=0).
 
-    Returns (positive_body, negative_cutters).
+    Returns (positive_body, negative_cutters, filled_body).
     positive_body may be None if the leaf has no positive atoms.
+    filled_body is the leaf with internal holes filled (outer boundary only),
+    used for trimming the arc bar so it stops at the leaf edge.
     """
     thickness = config.leaf_thickness
     xy_scale = leaf.scale
     pos_body: Part | None = None
+    filled_body: Part | None = None
     neg_cutters: list[Part] = []
     neg_cutter_is_text: list[bool] = []  # track origin for centering fix
 
@@ -191,6 +185,17 @@ def _make_leaf_parts(
                     else:
                         with span("generate.leaf.fuse_svg_pos"):
                             pos_body = _fuse(pos_body, solid)
+                    # Build a filled version (outer wire only, no holes)
+                    # for trimming the arc bar at the leaf boundary.
+                    try:
+                        filled_face = Face(face_scaled.outer_wire())
+                        filled_solid = extrude(filled_face, amount=thickness)
+                        if filled_body is None:
+                            filled_body = filled_solid
+                        else:
+                            filled_body = _fuse(filled_body, filled_solid)
+                    except Exception:
+                        pass
 
         elif isinstance(atom, Txt):
             font_name, font_style = _text_font_params(config)
@@ -230,7 +235,11 @@ def _make_leaf_parts(
                             pos_body = _fuse(pos_body, solid)
 
     if pos_body is None:
-        return None, neg_cutters
+        return None, neg_cutters, None
+
+    # If no filled_body was built (e.g. text-only leaf), fall back to pos_body
+    if filled_body is None:
+        filled_body = pos_body
 
     # --- Centre everything so the positive body is at the origin ----------
     #
@@ -259,6 +268,7 @@ def _make_leaf_parts(
 
     centering = Pos(-cx, -cy, -cz)
     pos_body = centering * pos_body
+    filled_body = centering * filled_body
     neg_cutters = [centering * c for c in neg_cutters]
 
     # --- Apply leaf-level rotation (around the now-centred origin).
@@ -269,9 +279,10 @@ def _make_leaf_parts(
     if leaf.rotation != 0.0:
         r = Rot(0, 0, leaf.rotation)
         pos_body = r * pos_body
+        filled_body = r * filled_body
         neg_cutters = [r * c for c in neg_cutters]
 
-    return pos_body, neg_cutters
+    return pos_body, neg_cutters, filled_body
 
 
 # ---------------------------------------------------------------------------
@@ -411,6 +422,8 @@ def _generate_branch_inner(
     cutters: list[Part] = []
     left_leaf_body = None
     right_leaf_body = None
+    left_filled_body = None
+    right_filled_body = None
 
     # Counter-rotate leaves so they appear upright when the arc tilts.
     # branch.angle uses CW-positive convention; build123d Rot Z uses
@@ -421,49 +434,33 @@ def _generate_branch_inner(
     # 3. Build transformed leaf solids/cutters.
     if isinstance(branch.left, ResolvedLeaf):
         with span("generate.make_leaf_parts.left"):
-            pos_solid, neg_list = _make_leaf_parts(branch.left, config)
+            pos_solid, neg_list, filled = _make_leaf_parts(branch.left, config)
         if pos_solid is not None:
             left_leaf_body = Pos(left_x, left_y, 0) * counter_rot * pos_solid
+        if filled is not None:
+            left_filled_body = Pos(left_x, left_y, 0) * counter_rot * filled
         for c in neg_list:
             cutters.append(Pos(left_x, left_y, 0) * counter_rot * c)
 
     if isinstance(branch.right, ResolvedLeaf):
         with span("generate.make_leaf_parts.right"):
-            pos_solid, neg_list = _make_leaf_parts(branch.right, config)
+            pos_solid, neg_list, filled = _make_leaf_parts(branch.right, config)
         if pos_solid is not None:
             right_leaf_body = Pos(right_x, right_y, 0) * counter_rot * pos_solid
+        if filled is not None:
+            right_filled_body = Pos(right_x, right_y, 0) * counter_rot * filled
         for c in neg_list:
             cutters.append(Pos(right_x, right_y, 0) * counter_rot * c)
 
-    # 4. Trim arc tips to the final leaf-overlap boundary from each tip.
-    if left_leaf_body is not None:
-        with span("generate.trim_arc_tip.left"):
-            piece = _trim_arc_tip_to_leaf(
-                piece,
-                left_leaf_body,
-                side="left",
-                tip_x=left_x,
-                tip_y=left_y,
-                span_mm=branch.arc.w,
-                arc_w=branch.arc.w,
-                arc_h=branch.arc.h,
-                pivot_mm=branch.pivot_mm,
-            )
-    if right_leaf_body is not None:
-        with span("generate.trim_arc_tip.right"):
-            piece = _trim_arc_tip_to_leaf(
-                piece,
-                right_leaf_body,
-                side="right",
-                tip_x=right_x,
-                tip_y=right_y,
-                span_mm=branch.arc.w,
-                arc_w=branch.arc.w,
-                arc_h=branch.arc.h,
-                pivot_mm=branch.pivot_mm,
-            )
-
-    # 5. Fuse positive leaf bodies at endpoints.
+    # 4. Trim arc at leaf boundaries using the filled body (no holes),
+    #    then fuse the actual leaf (with holes).
+    #    (arc - filled_leaf) + leaf = arc stops at outer edge, holes preserved.
+    if left_filled_body is not None:
+        with span("generate.trim_arc_at_leaf.left"):
+            piece = _cut(piece, left_filled_body)
+    if right_filled_body is not None:
+        with span("generate.trim_arc_at_leaf.right"):
+            piece = _cut(piece, right_filled_body)
     if left_leaf_body is not None:
         with span("generate.fuse_leaf.left"):
             piece = _fuse(piece, left_leaf_body)
