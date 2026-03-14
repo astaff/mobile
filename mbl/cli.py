@@ -37,7 +37,6 @@ def build_parser() -> argparse.ArgumentParser:
         default="circle",
         help="Leaf background: circle|burst|star|heart|shopify|peace|cup|eclipse|octopus|smile|sun|blank or a custom .svg path",
     )
-    parser.add_argument("--font-size", type=float, default=22.0, help="Stencil text size in mm")
     parser.add_argument("--width", type=float, default=80.0, help="Top arc width (mm)")
     parser.add_argument("--height", type=float, default=12.0, help="Top arc sagitta (mm)")
     parser.add_argument(
@@ -77,7 +76,6 @@ def main(argv: list[str] | None = None) -> int:
 
     config = MobileConfig(
         font_path=args.font_path,
-        font_size=args.font_size,
         hook_style=args.hook_style,
         sim_leaf_mass_scale=args.leaf_mass_scale,
     )

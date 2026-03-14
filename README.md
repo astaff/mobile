@@ -24,6 +24,9 @@ mbl "MOM" --shape heart
 # Emoji are mapped to built-in shapes automatically
 mbl "⭐❤️😊🐙☀️"
 
+# Right-to-left languages are detected automatically
+mbl "שלום" --shape blank --text-scale 2.0
+
 # Custom SVG, normalized to 25 mm diameter at shape-scale 1.0
 mbl "HELLO" --shape custom-shape.svg
 
@@ -42,7 +45,6 @@ Key flags:
 - `--shape-scale`: background shape multiplier (default `1.0`)
 - `--text-scale`: text multiplier (default `0.8`)
 - `--leaf-mass-scale`: solver calibration for leaf mass (`1.0` same, `<1` lighter, `>1` heavier)
-- `--font-size`: base font size in mm
 - `--output`: `.3mf` (default) or `.stl`
 
 ## SDK

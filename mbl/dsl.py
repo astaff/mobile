@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import tempfile
+import unicodedata
 import warnings
 from typing import Sequence, Union
 
@@ -375,6 +376,17 @@ def text_leaf(text: str, *, text_scale: float = 1.0) -> Leaf:
     return Leaf(Space((Txt(text, scale=text_scale),)))
 
 
+def _is_rtl(text: str) -> bool:
+    """Return True if the first strong directional character is right-to-left."""
+    for ch in text:
+        bidi = unicodedata.bidirectional(ch)
+        if bidi in ("R", "AL", "AN"):
+            return True
+        if bidi == "L":
+            return False
+    return False
+
+
 def _split_graphemes(text: str) -> list[str]:
     """Split a string into grapheme clusters (handles emoji with variation selectors)."""
     clusters: list[str] = []
@@ -602,6 +614,7 @@ def from_word(
         raise ValueError("text_scale must be > 0")
 
     cfg = config or MobileConfig()
+    rtl = _is_rtl(word)
     chars = _split_graphemes(word)
     char_count = len(chars)
     level_count = max(1, char_count - 1)
@@ -659,6 +672,9 @@ def from_word(
 
         left_leaf = _make_char_leaf(left_ch, leaf_scale)
         right_leaf = _make_char_leaf(right_ch, right_scale)
+
+        if rtl:
+            left_leaf, right_leaf = right_leaf, left_leaf
 
         rows.append(Arc(arc_w, arc_h) @ (left_leaf, right_leaf))
 

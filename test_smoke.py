@@ -120,6 +120,50 @@ def test_emoji_leaf():
     assert _emoji_leaf("H", shape_scale=1.0) is None
 
 
+def test_rtl_detection():
+    """RTL detection works for Hebrew, Arabic, and LTR text."""
+    from mbl.dsl import _is_rtl
+
+    assert _is_rtl("שלום") is True
+    assert _is_rtl("مرحبا") is True
+    assert _is_rtl("Hello") is False
+    assert _is_rtl("123שלום") is True  # digits are neutral, first strong char is RTL
+    assert _is_rtl("") is False
+
+
+def test_rtl_swaps_left_right():
+    """For RTL text like Hebrew, left and right leaves are swapped on each level."""
+    from mbl.dsl import _split_graphemes
+
+    # "שלום" has 4 chars → 3 levels
+    levels = from_word("שלום")
+    chars = _split_graphemes("שלום")
+    assert len(levels) == 3
+
+    # On the last level (idx=2), left_ch would normally be chars[2] and right_ch chars[3].
+    # With RTL swap, left gets chars[3] and right gets chars[2].
+    last = levels[2]
+    assert last.left is not None
+    assert last.right is not None
+    # Left leaf text should be the last Hebrew char (ם) after RTL swap
+    left_text = [l for l in last.left.space.layers if isinstance(l, Text)]
+    right_text = [l for l in last.right.space.layers if isinstance(l, Text)]
+    assert len(left_text) > 0
+    assert len(right_text) > 0
+    assert left_text[0].text == chars[3]  # ם on left (swapped from right)
+    assert right_text[0].text == chars[2]  # ו on right (swapped from left)
+
+
+def test_ltr_no_swap():
+    """LTR text does not swap left and right."""
+    levels = from_word("AB")
+    cell = levels[0]
+    left_text = [l for l in cell.left.space.layers if isinstance(l, Text)]
+    right_text = [l for l in cell.right.space.layers if isinstance(l, Text)]
+    assert left_text[0].text == "A"
+    assert right_text[0].text == "B"
+
+
 def test_emoji_from_word():
     """from_word with emoji produces levels with shape leaves (no stencil text)."""
     levels = from_word("⭐❤️")

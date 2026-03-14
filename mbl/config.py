@@ -13,8 +13,8 @@ class MobileConfig:
     hole_tip_inset: float = 2.0  # mm inward from arc tip for child holes
     font: str = "Stardos Stencil"
     font_path: str | None = None  # path to .ttf/.otf file (overrides font name)
-    # Default tuned so stencil letters fill most of the 30x30 circle asset.
-    font_size: float = 22.0  # mm
+    # Derived from DEFAULT_SHAPE_DIAMETER_MM (25 mm) so text fits the shape.
+    font_size: float = 25.0 * 0.88  # mm
     hook_style: str = "line"  # "line" | "hook"
     hook_outer_radius: float = 4.0  # mm
     hook_thickness: float = 1.2  # mm radial wall
