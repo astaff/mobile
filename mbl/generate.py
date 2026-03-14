@@ -233,6 +233,24 @@ def _make_leaf_parts(
                     else:
                         with span("generate.leaf.fuse_text_pos"):
                             pos_body = _fuse(pos_body, solid)
+            # Build a filled bounding-box solid for the entire glyph.
+            # Individual outer_wire() fills don't cover gaps between
+            # disconnected strokes (e.g. ש, ל), so use the visual
+            # bounding box of the whole text compound instead.
+            if not atom.neg:
+                _FILL_SHRINK = 1.0  # mm — slightly undersize so arc overlaps into letter zone
+                bb_w = (tbb.max.X - tbb.min.X) * glyph_scale - _FILL_SHRINK
+                bb_h = (tbb.max.Y - tbb.min.Y) * glyph_scale - _FILL_SHRINK
+                if bb_w > 0 and bb_h > 0:
+                    try:
+                        bbox_face = Rectangle(bb_w, bb_h)
+                        bbox_solid = extrude(bbox_face, amount=thickness)
+                        if filled_body is None:
+                            filled_body = bbox_solid
+                        else:
+                            filled_body = _fuse(filled_body, bbox_solid)
+                    except Exception:
+                        pass
 
     if pos_body is None:
         return None, neg_cutters, None
