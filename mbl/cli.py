@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 import sys
 
-from mbl import Mobile, MobileConfig
+from mbl import from_word, to_3mf, MobileConfig
 from mbl.perf import emit_report, set_enabled
 
 
@@ -29,7 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output",
         default=None,
-        help="Output path (.stl or .3mf, default: <word>.3mf)",
+        help="Output path (.3mf, default: <word>.3mf)",
     )
     parser.add_argument("--hook-style", choices=["line", "hook"], default="line")
     parser.add_argument(
@@ -82,7 +82,7 @@ def main(argv: list[str] | None = None) -> int:
         sim_leaf_mass_scale=args.leaf_mass_scale,
     )
 
-    mobile = Mobile.from_word(
+    levels = from_word(
         args.word,
         width=args.width,
         height=args.height,
@@ -94,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
 
     output = Path(args.output) if args.output else _default_output_path(args.word)
     try:
-        out_path = mobile.to_file(output)
+        out_path = to_3mf(levels, output, config=config)
     finally:
         emit_report(sys.stderr)
     print(f"Generated {out_path}")

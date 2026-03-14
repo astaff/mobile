@@ -5,42 +5,36 @@
 Generate printable hanging mobiles with letters and shapes.
 
 ```bash
-uvx --from git+https://github.com/astaff/mobile.git mbl "HELLO"
-```
-
-Or from a local checkout:
-
-```bash
-uv sync
-uv run mbl "HELLO"
+uv tool install --upgrade git+https://github.com/astaff/mobile.git
+mbl "HELLO"
 ```
 
 Shape modes:
 
 ```bash
 # Built-in shape, normalized to 25 mm diameter at shape-scale 1.0
-uv run mbl "LOVE" --shape heart
+mbl "LOVE" --shape heart
 
 # Seven hearts for mom
-uv run mbl "❤️❤️❤️❤️❤️❤️❤️"
+mbl "❤️❤️❤️❤️❤️❤️❤️"
 
 # MOM stencil-cut into hearts
-uv run mbl "MOM" --shape heart
+mbl "MOM" --shape heart
 
 # Emoji are mapped to built-in shapes automatically
-uv run mbl "⭐❤️😊🐙☀️"
+mbl "⭐❤️😊🐙☀️"
 
 # Custom SVG, normalized to 25 mm diameter at shape-scale 1.0
-uv run mbl "HELLO" --shape custom-shape.svg
+mbl "HELLO" --shape custom-shape.svg
 
 # Use whitespace if no text is needed
-uv run mbl "     " --shape shopify
+mbl "     " --shape shopify
 
 # Scale shape and font (relative to the scaled shape)
-uv run mbl "HELLO" --shape custom-shape.svg --shape-scale 1.5 --text-scale 0.8
+mbl "HELLO" --shape custom-shape.svg --shape-scale 1.5 --text-scale 0.8
 
 # Print a stage timing profile
-uv run mbl "HELLO" --shape custom-shape.svg --profile
+mbl "HELLO" --shape custom-shape.svg --profile
 ```
 
 Key flags:
@@ -54,27 +48,23 @@ Key flags:
 ## SDK
 
 ```python
-from mbl import Arc, Mobile, Text, Circle, Burst, Heart
+from pathlib import Path
+from mbl import Arc, Leaf, to_3mf
 
-# One-liner
-Mobile.from_word("HELLO").to_file("hello.3mf")
-Mobile.from_word("MOM", shape="heart").to_file("mom.3mf")
-Mobile.from_word("❤️❤️❤️❤️❤️❤️❤️").to_file("mom-7-hearts.3mf")
-Mobile.from_word("⭐❤️😊🐙☀️").to_file("emoji-mix.3mf")
+def leaf(s: str) -> Leaf:
+    return Leaf.from_svg(str(Path("mbl") / "assets" / "states" / f"{s}.svg"))
 
-# Custom DSL — mixed shapes, two rows
-mobile = Mobile(
-    [
-        Arc(88, 12) @ (~Text("S") & Circle(), None),
-        Arc(64, 9)
-        @ (
-            ~Text("U") & Burst(),
-            ~Text("N") & Heart(),
-        ),
-    ]
-)
+s = 0.17
 
-mobile.to_file("sun-two-row.3mf")
+levels = [
+        Arc(100, 22) @ (None, leaf("ME") * s),
+        Arc(90, 18) @ (None, None),
+        [Arc(45, 12) @ (leaf("VT") * s, leaf("NH") * s), Arc(50, 10) @ (None, leaf("MA") * s)],
+        Arc(35, 10) @ (leaf("CT") * s, leaf("RI") * s),
+]
+
+# pass config=MobileConfig(...) to override generation parameters
+out = to_3mf(levels, "new-england.3mf")
 ```
 
 ## Shape semantics

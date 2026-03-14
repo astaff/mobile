@@ -6,6 +6,7 @@ from mbl.dsl import (
     Vector, Text, Svg, Txt, stencil_cut,
     Circle, Star, Burst, Heart, Shopify, Peace,
     Cup, Eclipse, Octopus, Smile, Sun,
+    from_word, to_3mf,
 )
 from mbl.errors import (
     MobileArcError,
@@ -46,6 +47,8 @@ __all__ = [
     "Heart",
     "Leaf",
     "Mobile",
+    "from_word",
+    "to_3mf",
     "MobileArcError",
     "MobileConfig",
     "MobileEmptyError",

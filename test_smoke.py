@@ -6,10 +6,11 @@ import tempfile
 from pathlib import Path
 
 from mbl import (
-    Arc, Cell, Leaf, Mobile, Space,
+    Arc, Cell, Leaf, Space,
     Vector, Text, Svg, Txt, stencil_cut,
     Circle, Star, Burst, Heart, Shopify,
     Cup, Eclipse, Octopus, Smile, Sun,
+    from_word, to_3mf,
 )
 
 
@@ -120,11 +121,11 @@ def test_emoji_leaf():
 
 
 def test_emoji_from_word():
-    """from_word with emoji produces a mobile with shape leaves (no stencil text)."""
-    mobile = Mobile.from_word("⭐❤️")
+    """from_word with emoji produces levels with shape leaves (no stencil text)."""
+    levels = from_word("⭐❤️")
     # Should have 1 level (2 chars - 1)
-    assert len(mobile.grid) == 1
-    cell = mobile.grid[0][0]
+    assert len(levels) == 1
+    cell = levels[0]
     # Both leaves should have exactly 1 layer (just the shape, no text)
     assert cell.left is not None
     assert cell.right is not None
@@ -134,8 +135,8 @@ def test_emoji_from_word():
 
 def test_mixed_emoji_and_letters():
     """Mix of emoji and letters: emoji get shape, letters get stencil."""
-    mobile = Mobile.from_word("H⭐")
-    cell = mobile.grid[0][0]
+    levels = from_word("H⭐")
+    cell = levels[0]
     # Left = "H" → stencil_cut (2 layers: shape + neg text)
     assert cell.left is not None
     assert len(cell.left.space.layers) == 2
@@ -190,10 +191,10 @@ def test_cli_shape():
 
 
 def test_sdk_from_word():
-    """SDK Mobile.from_word() produces a file."""
+    """SDK from_word() produces a file."""
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "hi.3mf"
-        Mobile.from_word("HI").to_file(out)
+        to_3mf(from_word("HI"), out)
         assert out.exists() and out.stat().st_size > 0
 
 
@@ -201,7 +202,7 @@ def test_sdk_shape_burst():
     """SDK with shape= kwarg."""
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "hi-burst.3mf"
-        Mobile.from_word("HI", shape="burst").to_file(out)
+        to_3mf(from_word("HI", shape="burst"), out)
         assert out.exists() and out.stat().st_size > 0
 
 

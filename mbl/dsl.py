@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-import shutil
 import tempfile
 import warnings
 from typing import Sequence, Union
@@ -20,7 +19,6 @@ from build123d import Compound, Face, FontStyle, TextAlign, import_svg
 from mbl.config import MobileConfig
 from mbl.errors import MobileEmptyError, MobileShapeError
 from mbl.perf import count, span
-from mbl.stl import merge_stl_files
 from mbl.three_mf import export_3mf_files
 
 
@@ -492,96 +490,20 @@ RowLike = Cell | Sequence[Cell]
 
 
 class Mobile:
-    """Grid-first mobile model and build entrypoint."""
+    """Namespace for mobile generation utilities.
+
+    All public methods are static — pass ``levels`` (a list of rows) and an
+    optional ``config`` to any export helper.
+    """
 
     def __init__(self, rows: Sequence[RowLike], config: MobileConfig | None = None):
         self.config = config or MobileConfig()
         self.grid: list[list[Cell]] = [self._coerce_row(row) for row in rows]
         self._validate()
 
-    @classmethod
-    def from_word(
-        cls,
-        word: str,
-        *,
-        width: float = 80.0,
-        height: float = 12.0,
-        shape: str = "circle",
-        shape_scale: float = 1.0,
-        text_scale: float = 0.8,
-        config: MobileConfig | None = None,
-    ) -> Mobile:
-        if not word:
-            raise MobileEmptyError("word is empty")
-        if shape_scale <= 0:
-            raise ValueError("shape_scale must be > 0")
-        if text_scale <= 0:
-            raise ValueError("text_scale must be > 0")
-
-        cfg = config or MobileConfig()
-        chars = _split_graphemes(word)
-        count = len(chars)
-        level_count = max(1, count - 1)
-        rows: list[Cell] = []
-        base_leaf = _shape_leaf(shape, shape_scale=shape_scale)
-        is_blank = base_leaf is None
-
-        default_font_name = MobileConfig().font
-        using_default_font = cfg.font_path is None and cfg.font == default_font_name
-        if using_default_font:
-            if is_blank:
-                if _can_use_helvetica_neue_bold():
-                    cfg.font = "Helvetica Neue Bold"
-                    cfg.font_path = None
-                else:
-                    warnings.warn(
-                        "shape='blank' prefers 'Helvetica Neue Bold', but it is not "
-                        "available on this system. Falling back to default font.",
-                        stacklevel=2,
-                    )
-            else:
-                bundled_font = _asset_path("StardosStencil-Regular.ttf")
-                if bundled_font.exists():
-                    cfg.font_path = str(bundled_font)
-
-        def _make_char_leaf(
-            ch: str, scale: float
-        ) -> Leaf | None:
-            """Build a leaf for a single grapheme cluster, checking emoji first."""
-            if ch is None:
-                return None
-            # Check if the character maps to a built-in shape
-            emoji = _emoji_leaf(ch, shape_scale=shape_scale)
-            if emoji is not None:
-                return emoji * scale
-            # Regular character path
-            if is_blank:
-                return text_leaf(ch, text_scale=text_scale) * scale
-            assert base_leaf is not None
-            if ch.isspace():
-                return base_leaf * scale
-            return stencil_cut(ch, base=base_leaf, text_scale=text_scale) * scale
-
-        for idx in range(level_count):
-            ratio = idx / max(1, level_count - 1)
-            arc_w = max(28.0, width * (0.68 + (1.0 - ratio) * 0.32))
-            arc_h = max(4.0, height * (0.6 + (1.0 - ratio) * 0.4))
-            leaf_scale = max(0.62, 1.0 - 0.32 * ratio)
-            right_scale = max(0.55, leaf_scale * 0.8)
-
-            left_ch = chars[idx] if count > 1 else chars[0]
-            right_ch = (
-                chars[idx + 1]
-                if count > 1 and idx == level_count - 1
-                else (chars[0] if count == 1 else None)
-            )
-
-            left_leaf = _make_char_leaf(left_ch, leaf_scale)
-            right_leaf = _make_char_leaf(right_ch, right_scale)
-
-            rows.append(Arc(arc_w, arc_h) @ (left_leaf, right_leaf))
-
-        return cls(rows, config=cfg)
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
 
     @property
     def rows(self) -> list[list[Cell]]:
@@ -630,7 +552,7 @@ class Mobile:
         if last_holes > 0:
             raise MobileShapeError(f"Last row has {last_holes} hole(s) with no continuation")
 
-    def build(self, output_dir: str | Path) -> None:
+    def _build(self, output_dir: str | Path) -> None:
         """Resolve pivots and export one STL per arc piece."""
         from mbl.generate import generate
         from mbl.resolve import resolve
@@ -655,53 +577,113 @@ class Mobile:
         with span("build.generate.final"):
             generate(tree, self.config, Path(output_dir))
 
-    def to_stl(self, output_path: str | Path) -> Path:
-        """Export a packed single STL and sidecar part STLs."""
-        out = Path(output_path)
-        out.parent.mkdir(parents=True, exist_ok=True)
 
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            with span("export.to_stl.build"):
-                self.build(tmp_path)
-            parts = sorted(tmp_path.glob("arc-*.stl"))
-            if not parts:
-                raise MobileEmptyError("No STL parts were generated")
+# ---------------------------------------------------------------------------
+# Module-level API
+# ---------------------------------------------------------------------------
 
-            with span("export.to_stl.merge"):
-                merge_stl_files(parts, out)
 
-            stem = out.stem
-            for stl in parts:
-                sidecar = out.with_name(f"{stem}-{stl.stem}.stl")
-                if sidecar != out:
-                    shutil.copy2(stl, sidecar)
+def from_word(
+    word: str,
+    *,
+    width: float = 80.0,
+    height: float = 12.0,
+    shape: str = "circle",
+    shape_scale: float = 1.0,
+    text_scale: float = 0.8,
+    config: MobileConfig | None = None,
+) -> list[Cell]:
+    """Generate levels for *word*. Mutates *config* in-place (font selection)."""
+    if not word:
+        raise MobileEmptyError("word is empty")
+    if shape_scale <= 0:
+        raise ValueError("shape_scale must be > 0")
+    if text_scale <= 0:
+        raise ValueError("text_scale must be > 0")
 
-        return out
+    cfg = config or MobileConfig()
+    chars = _split_graphemes(word)
+    char_count = len(chars)
+    level_count = max(1, char_count - 1)
+    rows: list[Cell] = []
+    base_leaf = _shape_leaf(shape, shape_scale=shape_scale)
+    is_blank = base_leaf is None
 
-    def to_3mf(self, output_path: str | Path) -> Path:
-        """Export a multi-object 3MF where each arc is an individual object."""
-        out = Path(output_path)
-        out.parent.mkdir(parents=True, exist_ok=True)
+    default_font_name = MobileConfig().font
+    using_default_font = cfg.font_path is None and cfg.font == default_font_name
+    if using_default_font:
+        if is_blank:
+            if _can_use_helvetica_neue_bold():
+                cfg.font = "Helvetica Neue Bold"
+                cfg.font_path = None
+            else:
+                warnings.warn(
+                    "shape='blank' prefers 'Helvetica Neue Bold', but it is not "
+                    "available on this system. Falling back to default font.",
+                    stacklevel=2,
+                )
+        else:
+            bundled_font = _asset_path("StardosStencil-Regular.ttf")
+            if bundled_font.exists():
+                cfg.font_path = str(bundled_font)
 
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            with span("export.to_3mf.build"):
-                self.build(tmp_path)
-            parts = sorted(tmp_path.glob("arc-*.stl"))
-            if not parts:
-                raise MobileEmptyError("No STL parts were generated")
-            with span("export.to_3mf.pack"):
-                export_3mf_files(parts, out)
+    def _make_char_leaf(
+        ch: str, scale: float
+    ) -> Leaf | None:
+        """Build a leaf for a single grapheme cluster, checking emoji first."""
+        if ch is None:
+            return None
+        emoji = _emoji_leaf(ch, shape_scale=shape_scale)
+        if emoji is not None:
+            return emoji * scale
+        if is_blank:
+            return text_leaf(ch, text_scale=text_scale) * scale
+        assert base_leaf is not None
+        if ch.isspace():
+            return base_leaf * scale
+        return stencil_cut(ch, base=base_leaf, text_scale=text_scale) * scale
 
-        return out
+    for idx in range(level_count):
+        ratio = idx / max(1, level_count - 1)
+        arc_w = max(28.0, width * (0.68 + (1.0 - ratio) * 0.32))
+        arc_h = max(4.0, height * (0.6 + (1.0 - ratio) * 0.4))
+        leaf_scale = max(0.62, 1.0 - 0.32 * ratio)
+        right_scale = max(0.55, leaf_scale * 0.8)
 
-    def to_file(self, output_path: str | Path) -> Path:
-        """Export based on extension: .stl or .3mf."""
-        out = Path(output_path)
-        suffix = out.suffix.lower()
-        if suffix == ".3mf":
-            return self.to_3mf(out)
-        if suffix == ".stl" or suffix == "":
-            return self.to_stl(out)
-        raise ValueError(f"Unsupported output format: {out.suffix}")
+        left_ch = chars[idx] if char_count > 1 else chars[0]
+        right_ch = (
+            chars[idx + 1]
+            if char_count > 1 and idx == level_count - 1
+            else (chars[0] if char_count == 1 else None)
+        )
+
+        left_leaf = _make_char_leaf(left_ch, leaf_scale)
+        right_leaf = _make_char_leaf(right_ch, right_scale)
+
+        rows.append(Arc(arc_w, arc_h) @ (left_leaf, right_leaf))
+
+    return rows
+
+
+def to_3mf(
+    levels: Sequence[RowLike],
+    output_path: str | Path,
+    *,
+    config: MobileConfig | None = None,
+) -> Path:
+    """Export a multi-object 3MF where each arc is an individual object."""
+    mobile = Mobile(levels, config=config)
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        with span("export.to_3mf.build"):
+            mobile._build(tmp_path)
+        parts = sorted(tmp_path.glob("arc-*.stl"))
+        if not parts:
+            raise MobileEmptyError("No STL parts were generated")
+        with span("export.to_3mf.pack"):
+            export_3mf_files(parts, out)
+
+    return out

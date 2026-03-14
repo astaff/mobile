@@ -1,7 +1,7 @@
 .PHONY: test baseline diff-baseline
 
 test:
-	uv run python test_smoke.py
+	uv run pytest test_smoke.py
 
 baseline:
 	mkdir -p baseline
