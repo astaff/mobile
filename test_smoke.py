@@ -53,8 +53,8 @@ def test_arc_offset_accumulates():
 
 
 def test_new_syntax_builds_cell():
-    """Arc(...) @ (~Text('S') & Circle(), ~Text('U') & Burst()) builds a Cell."""
-    cell = Arc(88, 12) @ (~Text("S") & Circle(), ~Text("U") & Burst())
+    """(~Text('S') & Circle(), ~Text('U') & Burst()) @ Arc(...) builds a Cell."""
+    cell = (~Text("S") & Circle(), ~Text("U") & Burst()) @ Arc(88, 12)
     assert isinstance(cell, Cell)
     assert cell.left is not None
     assert cell.right is not None

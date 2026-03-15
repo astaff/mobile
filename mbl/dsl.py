@@ -210,13 +210,13 @@ class Arc:
     def __mod__(self, degrees: float) -> Arc:
         return Arc(self.w, self.h, self.rotation + degrees, self.offset)
 
-    def __matmul__(self, hanging) -> Cell | list[Cell]:
-        """Bind arc to one pair or map across a list of pairs.
+    def __rmatmul__(self, hanging) -> Cell | list[Cell]:
+        """Bind a hanging pair (or list of pairs) to this arc.
 
         Supported:
-        - Arc(...) @ (left, right) -> Cell
-        - Arc(...) @ (left,)       -> Cell (right hole)
-        - Arc(...) @ [(a, b), (c,)] -> list[Cell]
+        - (left, right) @ Arc(...) -> Cell
+        - (left,)       @ Arc(...) -> Cell (right hole)
+        - [(a, b), (c,)] @ Arc(...) -> list[Cell]
         """
         if isinstance(hanging, (tuple, list)) and hanging:
             if self._is_pair(hanging):
@@ -676,7 +676,7 @@ def from_word(
         if rtl:
             left_leaf, right_leaf = right_leaf, left_leaf
 
-        rows.append(Arc(arc_w, arc_h) @ (left_leaf, right_leaf))
+        rows.append((left_leaf, right_leaf) @ Arc(arc_w, arc_h))
 
     return rows
 

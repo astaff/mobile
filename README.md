@@ -53,16 +53,14 @@ Key flags:
 from pathlib import Path
 from mbl import Arc, Leaf, to_3mf
 
-def leaf(s: str) -> Leaf:
-    return Leaf.from_svg(str(Path("mbl") / "assets" / "states" / f"{s}.svg"))
-
-s = 0.17
+def leaf(name: str, scale: float = 0.17) -> Leaf:
+    return Leaf.from_svg(str(Path("mbl") / "assets" / "states" / f"{name}.svg")) * scale
 
 levels = [
-        Arc(100, 22) @ (None, leaf("ME") * s),
-        Arc(90, 18) @ (None, None),
-        [Arc(45, 12) @ (leaf("VT") * s, leaf("NH") * s), Arc(50, 10) @ (None, leaf("MA") * s)],
-        Arc(35, 10) @ (leaf("CT") * s, leaf("RI") * s),
+        (None, leaf("ME")) @ Arc(100, 22),
+        (None, None) @ Arc(90, 18),
+        [(leaf("VT"), leaf("NH")) @ Arc(45, 12), (None, leaf("MA")) @ Arc(50, 10)],
+        (leaf("CT"), leaf("RI")) @ Arc(35, 10),
 ]
 
 # pass config=MobileConfig(...) to override generation parameters
