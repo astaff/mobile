@@ -45,7 +45,6 @@ Key flags:
 - `--shape-scale`: background shape multiplier (default `1.0`)
 - `--text-scale`: text multiplier (default `0.8`)
 - `--leaf-mass-scale`: solver calibration for leaf mass (`1.0` same, `<1` lighter, `>1` heavier)
-- `--output`: `.3mf` (default) or `.stl`
 
 ## SDK
 
@@ -53,14 +52,16 @@ Key flags:
 from pathlib import Path
 from mbl import Arc, Leaf, to_3mf
 
+STATES = Path("mbl") / "assets" / "states"
+
 def leaf(name: str, scale: float = 0.17) -> Leaf:
-    return Leaf.from_svg(str(Path("mbl") / "assets" / "states" / f"{name}.svg")) * scale
+    return Leaf.from_svg(str(STATES / f"{name}.svg")) * scale
 
 levels = [
-        Arc(100, 22) @ leaf("ME"),
-        Arc(90, 18),
-        [leaf("VT") @ Arc(45, 12) @ leaf("NH"), Arc(50, 10) @ leaf("MA")],
-        leaf("CT") @ Arc(35, 10) @ leaf("RI"),
+                               [             Arc(100, 22) @ leaf("ME")],
+                   [          Arc(90, 18)         ],
+    [leaf("VT") @ Arc(45, 12) @ leaf("NH"),      Arc(50, 10) @ leaf("MA")],
+                                 leaf("CT") @ Arc(35, 10) @ leaf("RI"),
 ]
 
 # pass config=MobileConfig(...) to override generation parameters
@@ -71,10 +72,9 @@ out = to_3mf(levels, "new-england.3mf")
 
 - Default shape is `circle`.
 - `shape_scale=1.0` means shape diameter is normalized to `25 mm`.
-- Built-ins (`circle`, `burst`, `star`, `heart`, `shopify`, `peace`, `cup`, `eclipse`, `octopus`, `smile`, `sun`) are normalized the same way.
+- Built-ins (`circle`, `burst`, `star`, `heart`, `shopify`, `peace`, `cup`, `eclipse`, `octopus`, `smile`) are normalized the same way.
 - Custom SVGs are loaded and normalized to `25 mm` diameter before `shape_scale` is applied.
 - Text subtraction/geometry uses `text_scale` independently of `shape_scale`.
-- Simulation runs after shape/text scaling, so balancing uses final scaled geometry.
 
 ## Creative Commons attribution
 
