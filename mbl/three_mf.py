@@ -7,6 +7,8 @@ import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 import zipfile
 
+import math
+
 from mbl.stl import Triangle, read_binary_stl
 
 CORE_NS = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
@@ -122,20 +124,31 @@ def _rels_xml() -> bytes:
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
-def export_3mf_files(
-    inputs: list[Path],
-    output: Path,
-    spacing: float = 2.0,
-    build_plate_width: float = 200.0,
-    build_plate_depth: float = 200.0,
-    edge_margin: float = 1.0,
-) -> Path:
-    """Write a 3MF package containing one named object per STL input file.
+def _rotate_triangles_z(triangles: list[Triangle], degrees: float) -> list[Triangle]:
+    """Rotate all triangles around the Z axis by *degrees*."""
+    rad = math.radians(degrees)
+    cos_a = math.cos(rad)
+    sin_a = math.sin(rad)
+    rotated: list[Triangle] = []
+    for v0, v1, v2 in triangles:
+        new_verts = []
+        for x, y, z in (v0, v1, v2):
+            new_verts.append((x * cos_a - y * sin_a, x * sin_a + y * cos_a, z))
+        rotated.append((tuple(new_verts[0]), tuple(new_verts[1]), tuple(new_verts[2])))  # type: ignore[arg-type]
+    return rotated
 
-    Parts are arranged in a 2D grid that wraps rows to fit the configured
-    build plate footprint.
+
+def _layout_parts_to_plates(
+    inputs: list[Path],
+    spacing: float,
+    build_plate_width: float,
+    build_plate_depth: float,
+    edge_margin: float,
+) -> list[list[tuple[str, list[Triangle], float, float]]]:
+    """Lay out parts across one or more build plates, top-to-bottom, left-to-right.
+
+    Returns a list of plates, each plate a list of (name, triangles, offset_x, offset_y).
     """
-    part_meshes: list[tuple[str, list[Triangle], float, float]] = []
     usable_width = build_plate_width - 2.0 * edge_margin
     usable_depth = build_plate_depth - 2.0 * edge_margin
     if usable_width <= 0 or usable_depth <= 0:
@@ -144,6 +157,7 @@ def export_3mf_files(
             f"small for edge margin {edge_margin:.1f} mm"
         )
 
+    plates: list[list[tuple[str, list[Triangle], float, float]]] = [[]]
     cursor_x = edge_margin
     cursor_y = edge_margin
     row_depth = 0.0
@@ -155,12 +169,18 @@ def export_3mf_files(
         depth = max_y - min_y
 
         if width > usable_width or depth > usable_depth:
-            raise ValueError(
-                f"Part '{path.stem}' ({width:.2f}x{depth:.2f} mm) exceeds "
-                f"usable plate area {usable_width:.1f}x{usable_depth:.1f} mm "
-                f"(plate {build_plate_width:.1f}x{build_plate_depth:.1f}, "
-                f"edge margin {edge_margin:.1f})"
-            )
+            # Rotate 45° to fit diagonally on the plate.
+            triangles = _rotate_triangles_z(triangles, 45.0)
+            min_x, max_x, min_y, max_y = _mesh_bounds_xy(triangles)
+            width = max_x - min_x
+            depth = max_y - min_y
+            if width > usable_width or depth > usable_depth:
+                raise ValueError(
+                    f"Part '{path.stem}' ({width:.2f}x{depth:.2f} mm) exceeds "
+                    f"usable plate area even after 45° rotation "
+                    f"(plate {build_plate_width:.1f}x{build_plate_depth:.1f}, "
+                    f"edge margin {edge_margin:.1f})"
+                )
 
         # Wrap to next row when this part no longer fits current row.
         if cursor_x > edge_margin and (cursor_x + width) > (build_plate_width - edge_margin):
@@ -168,24 +188,59 @@ def export_3mf_files(
             cursor_y += row_depth + spacing
             row_depth = 0.0
 
+        # Spill to a new plate when this part no longer fits vertically.
         if (cursor_y + depth) > (build_plate_depth - edge_margin):
-            raise ValueError(
-                f"Cannot fit all parts on build plate "
-                f"{build_plate_width:.1f}x{build_plate_depth:.1f} mm "
-                f"with spacing {spacing:.1f} and edge margin {edge_margin:.1f} mm"
-            )
+            plates.append([])
+            cursor_x = edge_margin
+            cursor_y = edge_margin
+            row_depth = 0.0
 
         offset_x = cursor_x - min_x
         offset_y = cursor_y - min_y
-        part_meshes.append((path.stem, triangles, offset_x, offset_y))
+        plates[-1].append((path.stem, triangles, offset_x, offset_y))
 
         cursor_x += width + spacing
         row_depth = max(row_depth, depth)
 
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(output, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("[Content_Types].xml", _content_types_xml())
-        zf.writestr("_rels/.rels", _rels_xml())
-        zf.writestr("3D/3dmodel.model", _build_model_xml(part_meshes))
+    return plates
 
-    return output
+
+def export_3mf_files(
+    inputs: list[Path],
+    output: Path,
+    spacing: float = 2.0,
+    build_plate_width: float = 200.0,
+    build_plate_depth: float = 200.0,
+    edge_margin: float = 0.0,
+) -> list[Path]:
+    """Write one or more 3MF packages, one per build plate.
+
+    Parts are laid out top-to-bottom, left-to-right.  When a plate fills up,
+    a new file is created (``output``, ``output.with_stem(stem-2)``, …).
+    The first plate contains the topmost arcs of the mobile.
+
+    Returns the list of written 3MF paths.
+    """
+    plates = _layout_parts_to_plates(
+        inputs, spacing, build_plate_width, build_plate_depth, edge_margin,
+    )
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+
+    for plate_idx, part_meshes in enumerate(plates):
+        if not part_meshes:
+            continue
+        if plate_idx == 0:
+            plate_path = output
+        else:
+            stem = output.stem
+            plate_path = output.with_stem(f"{stem}-{plate_idx + 1}")
+
+        with zipfile.ZipFile(plate_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("[Content_Types].xml", _content_types_xml())
+            zf.writestr("_rels/.rels", _rels_xml())
+            zf.writestr("3D/3dmodel.model", _build_model_xml(part_meshes))
+        written.append(plate_path)
+
+    return written

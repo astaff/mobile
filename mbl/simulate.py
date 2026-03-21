@@ -205,8 +205,8 @@ def _solve_pivot(
 
     # 2. Child point masses at endpoints (only for sub-arc children).
     #    Direct leaves are already fused into the STL.
-    left_x = -midpoint
-    right_x = arc_w - midpoint
+    left_x = -midpoint + (config.hole_tip_inset if left_point_mass else 0)
+    right_x = arc_w - midpoint - (config.hole_tip_inset if right_point_mass else 0)
     left_y = arc_y_at_x(arc_w, arc_h, midpoint, left_x)
     right_y = arc_y_at_x(arc_w, arc_h, midpoint, right_x)
 

@@ -92,10 +92,11 @@ def main(argv: list[str] | None = None) -> int:
 
     output = Path(args.output) if args.output else _default_output_path(args.word)
     try:
-        out_path = to_3mf(levels, output, config=config)
+        out_paths = to_3mf(levels, output, config=config)
     finally:
         emit_report(sys.stderr)
-    print(f"Generated {out_path}")
+    for p in out_paths:
+        print(f"Generated {p}")
     return 0
 
 

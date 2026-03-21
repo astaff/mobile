@@ -699,8 +699,15 @@ def to_3mf(
     output_path: str | Path,
     *,
     config: MobileConfig | None = None,
-) -> Path:
-    """Export a multi-object 3MF where each arc is an individual object."""
+) -> list[Path]:
+    """Export multi-object 3MF(s) where each arc is an individual object.
+
+    Parts are laid out top-to-bottom, left-to-right across 200×200 mm build
+    plates.  When parts overflow a plate, additional 3MF files are created
+    (``stem-2.3mf``, ``stem-3.3mf``, …).
+
+    Returns the list of written 3MF paths.
+    """
     mobile = Mobile(levels, config=config)
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -713,6 +720,6 @@ def to_3mf(
         if not parts:
             raise MobileEmptyError("No STL parts were generated")
         with span("export.to_3mf.pack"):
-            export_3mf_files(parts, out)
+            written = export_3mf_files(parts, out)
 
-    return out
+    return written
